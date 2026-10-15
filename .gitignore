@@ -59,3 +59,13 @@ app.*.map.json
 
 # Temporary IDE files
 .vscode/
+
+# Python virtual environment
+backend/venv/
+backend/.venv/
+venv/
+.venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
