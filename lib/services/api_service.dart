@@ -1,28 +1,80 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/dummy_models.dart';
 
-import 'package:flutter/foundation.dart';
-
-/// Konfigurasi URL backend AISKIN.
-/// - Android Emulator → otomatis 10.0.2.2:8000 (menghubungkan ke localhost PC)
-/// - Web / Windows Desktop → otomatis localhost:8000
-/// - Device Fisik Android → set customBaseUrl ke IP LAN PC (mis. http://192.168.1.10:8000)
+/// Konfigurasi URL backend Carein.
+/// - Web / Windows Desktop → http://127.0.0.1:8000 (menghindari IPv6 ::1 issue pada Chrome)
+/// - Android Emulator      → http://10.0.2.2:8000
+/// - Device Fisik Android  → IP LAN PC (mis. http://192.168.18.17:8000)
 class ApiConfig {
   static String? customBaseUrl;
   static const int _port = 8000;
+  static String? _resolvedUrl;
 
-  static String get baseUrl {
+  /// Daftar kandidat URL backend yang akan dicoba secara otomatis
+  static List<String> get candidateUrls {
     if (customBaseUrl != null && customBaseUrl!.isNotEmpty) {
-      return customBaseUrl!;
+      return [customBaseUrl!];
     }
-    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-      return 'http://10.0.2.2:$_port';
+    if (kIsWeb) {
+      return [
+        'http://127.0.0.1:$_port',
+        'http://localhost:$_port',
+      ];
     }
-    return 'http://localhost:$_port';
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      return [
+        'http://127.0.0.1:$_port',     // USB ADB Reverse (prioritas utama HP fisik)
+        'http://localhost:$_port',     // USB ADB Reverse localhost
+        'http://10.0.2.2:$_port',      // Android Emulator
+        'http://192.168.18.17:$_port', // Wi-Fi LAN IP PC
+      ];
+    }
+    return [
+      'http://127.0.0.1:$_port',
+      'http://localhost:$_port',
+    ];
+  }
+
+  static String get baseUrl => _resolvedUrl ?? candidateUrls.first;
+
+  /// Cari URL backend yang aktif dengan ping PARALEL cepat (< 1.5 detik)
+  static Future<String?> resolveActiveUrl() async {
+    if (_resolvedUrl != null) {
+      try {
+        final res = await http
+            .get(Uri.parse('$_resolvedUrl/health'))
+            .timeout(const Duration(milliseconds: 1200));
+        if (res.statusCode == 200) return _resolvedUrl;
+      } catch (_) {
+        _resolvedUrl = null;
+      }
+    }
+
+    // Ping semua kandidat URL secara paralel agar respons didapat instan
+    final futures = candidateUrls.map((url) async {
+      try {
+        final res = await http
+            .get(Uri.parse('$url/health'))
+            .timeout(const Duration(milliseconds: 1800));
+        if (res.statusCode == 200) return url;
+      } catch (_) {}
+      return null;
+    });
+
+    final results = await Future.wait(futures);
+    for (final url in results) {
+      if (url != null) {
+        _resolvedUrl = url;
+        debugPrint('[ApiConfig] ✅ Terhubung ke backend aktif: $url');
+        return url;
+      }
+    }
+    return null;
   }
 }
 
@@ -95,7 +147,7 @@ class ApiAnalysisResult {
       ][m];
 }
 
-/// Service utama untuk memanggil AISKIN API.
+/// Service utama untuk memanggil Carein API.
 class SkinApiService {
   SkinApiService._();
 
@@ -105,7 +157,17 @@ class SkinApiService {
     required Uint8List imageBytes,
     required String filename,
   }) async {
-    final uri = Uri.parse('${ApiConfig.baseUrl}/analyze');
+    // 1. Cek dulu apakah ada backend yang aktif (maksimal 2.5 detik)
+    final activeUrl = await ApiConfig.resolveActiveUrl();
+    if (activeUrl == null) {
+      throw SkinApiException(
+        'Server backend AI belum dapat dijangkau.\n\n'
+        '• Jika menggunakan HP via kabel USB: jalankan "adb reverse tcp:8000 tcp:8000"\n'
+        '• Atau klik tombol "Mode Demo" di bawah untuk melihat hasil analisis foto secara instan.',
+      );
+    }
+
+    final uri = Uri.parse('$activeUrl/analyze');
 
     try {
       final request = http.MultipartRequest('POST', uri);
@@ -117,12 +179,12 @@ class SkinApiService {
         ),
       );
 
-      // Timeout 30 detik
+      // Timeout cepat 12 detik (bukan 30 detik lagi)
       final streamedResponse = await request.send().timeout(
-        const Duration(seconds: 30),
+        const Duration(seconds: 12),
         onTimeout: () => throw SkinApiException(
-          'Server tidak merespons dalam 30 detik. '
-          'Pastikan backend sudah berjalan.',
+          'Server memproses terlalu lama (timeout 12 detik).\n'
+          'Gunakan foto dengan ukuran lebih ringan atau coba lagi.',
         ),
       );
 
@@ -133,7 +195,7 @@ class SkinApiService {
         return ApiAnalysisResult.fromJson(json);
       } else {
         final body = jsonDecode(response.body) as Map<String, dynamic>;
-        final detail = body['detail'] ?? 'Terjadi kesalahan tidak dikenal';
+        final detail = body['detail'] ?? 'Terjadi kesalahan pada server backend.';
         throw SkinApiException('HTTP ${response.statusCode}: $detail');
       }
     } on SkinApiException {
@@ -141,22 +203,16 @@ class SkinApiService {
     } catch (e) {
       debugPrint('[SkinApiService] Error: $e');
       throw SkinApiException(
-        'Tidak dapat terhubung ke server analisis.\n'
-        'Pastikan backend sudah dijalankan di ${ApiConfig.baseUrl}',
+        'Gagal mengirim foto ke backend ($activeUrl).\n'
+        'Pesan error: $e',
       );
     }
   }
 
   /// Cek apakah backend dapat dijangkau
   static Future<bool> isReachable() async {
-    try {
-      final response = await http
-          .get(Uri.parse('${ApiConfig.baseUrl}/health'))
-          .timeout(const Duration(seconds: 5));
-      return response.statusCode == 200;
-    } catch (_) {
-      return false;
-    }
+    final active = await ApiConfig.resolveActiveUrl();
+    return active != null;
   }
 }
 

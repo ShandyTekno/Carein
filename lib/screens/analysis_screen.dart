@@ -22,8 +22,9 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
     try {
       final file = await _picker.pickImage(
         source: source,
-        maxWidth: 1600,
-        imageQuality: 85,
+        maxWidth: 800,
+        maxHeight: 800,
+        imageQuality: 80,
       );
       if (file == null) return;
       final bytes = await file.readAsBytes();

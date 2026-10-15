@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../models/dummy_models.dart';
+import '../services/analysis_service.dart';
 import '../services/auth_service.dart';
+import '../services/recommendation_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/analysis_card.dart';
 import '../widgets/product_card.dart';
@@ -50,43 +51,66 @@ class HomeScreen extends StatelessWidget {
           const SizedBox(height: 24),
           AnalysisCard(onPressed: onAnalyze),
           const SizedBox(height: 28),
-          const SectionTitle('Your Latest Analysis'),
+          const SectionTitle('Analisis Terkini'),
           const SizedBox(height: 14),
-          ScoreCard(
-            result: DummyData.latest,
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => const ResultScreen(result: DummyData.latest, fromHistory: true),
-              ),
-            ),
-          ),
-          const SizedBox(height: 28),
-          SectionTitle(
-            'Recommended For You',
-            actionLabel: 'See all',
-            onAction: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const RecommendationScreen()),
-            ),
-          ),
-          const SizedBox(height: 14),
-          SizedBox(
-            height: 215,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              clipBehavior: Clip.none,
-              itemCount: DummyData.homeRecommendations.length,
-              separatorBuilder: (context, index) => const SizedBox(width: 14),
-              itemBuilder: (context, i) => MiniProductCard(
-                product: DummyData.homeRecommendations[i],
+          Builder(
+            builder: (context) {
+              final latest = AnalysisService.latestResult;
+              return ScoreCard(
+                result: latest,
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (_) => ProductDetailScreen(
-                      product: DummyData.homeRecommendations[i],
-                    ),
+                    builder: (_) => ResultScreen(result: latest, fromHistory: true),
                   ),
                 ),
-              ),
-            ),
+              );
+            },
+          ),
+          const SizedBox(height: 28),
+          Builder(
+            builder: (context) {
+              final latest = AnalysisService.latestResult;
+              final routine = RecommendationService.getPersonalizedRoutine(latest);
+              final recommendedProducts = [
+                ...routine.morningProducts.take(2),
+                ...routine.nightProducts.take(2),
+              ];
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SectionTitle(
+                    'Rekomendasi Untuk Anda',
+                    actionLabel: 'Lihat semua',
+                    onAction: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => RecommendationScreen(analysisResult: latest),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  SizedBox(
+                    height: 215,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      clipBehavior: Clip.none,
+                      itemCount: recommendedProducts.length,
+                      separatorBuilder: (context, index) => const SizedBox(width: 14),
+                      itemBuilder: (context, i) => MiniProductCard(
+                        product: recommendedProducts[i],
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => ProductDetailScreen(
+                              product: recommendedProducts[i],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
         ],
       ),

@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:http/http.dart' as http;
+
 import '../core/supabase_config.dart';
 
 class AuthService {
@@ -16,6 +18,26 @@ class AuthService {
   static String get userName => userNameNotifier.value;
   static String get userEmail => userEmailNotifier.value;
   static String? get avatarUrl => userAvatarNotifier.value;
+
+  /// Memeriksa apakah Google OAuth sudah diaktifkan di Supabase Dashboard
+  static Future<bool> isGoogleOAuthEnabled() async {
+    final client = SupabaseConfig.client;
+    if (client == null) return false;
+    try {
+      final res = await http.get(
+        Uri.parse('${SupabaseConfig.supabaseUrl}/auth/v1/authorize?provider=google'),
+        headers: {'apikey': SupabaseConfig.supabaseAnonKey},
+      ).timeout(const Duration(seconds: 3));
+
+      // Jika status 400 dan mengandung 'provider is not enabled', berarti belum disetup
+      if (res.statusCode == 400 && res.body.contains('provider is not enabled')) {
+        return false;
+      }
+      return res.statusCode == 200 || res.statusCode == 302;
+    } catch (_) {
+      return false;
+    }
+  }
 
   /// Inisialisasi AuthService dan listener perubahan status autentikasi Supabase
   static void initialize() {
@@ -51,26 +73,32 @@ class AuthService {
     }
   }
 
-  /// Login / Registrasi Otomatis lewat Google
+  /// Login / Registrasi Otomatis lewat Google.
+  /// Jika Google Provider aktif di Supabase, jalankan OAuth resmi.
+  /// Jika belum disetup di Supabase Dashboard, fallback ke akun demo Google agar aplikasi tetap berfungsi.
   static Future<bool> signInWithGoogle() async {
     final client = SupabaseConfig.client;
 
     if (client != null) {
-      try {
-        await client.auth.signInWithOAuth(
-          OAuthProvider.google,
-          redirectTo: kIsWeb ? null : 'io.supabase.carein://login-callback/',
-        );
-        syncUserFromSupabase();
-        return true;
-      } catch (e) {
-        debugPrint('Error signInWithGoogle: $e');
-        // Jika gagal koneksi cloud, fallback ke simulasi agar demo tetap berjalan
+      final isConfiguredInSupabase = await isGoogleOAuthEnabled();
+      if (isConfiguredInSupabase) {
+        try {
+          await client.auth.signInWithOAuth(
+            OAuthProvider.google,
+            redirectTo: kIsWeb ? null : 'io.supabase.carein://login-callback/',
+          );
+          syncUserFromSupabase();
+          return true;
+        } catch (e) {
+          debugPrint('[AuthService] Error signInWithGoogle: $e');
+        }
+      } else {
+        debugPrint('[AuthService] Google OAuth belum diaktifkan di Supabase Dashboard. Menggunakan akun demo Google.');
       }
     }
 
-    // Simulasi Akun Google untuk demo
-    userNameNotifier.value = 'Budi Santoso';
+    // Masuk dengan Akun Simulasi Google untuk demonstrasi
+    userNameNotifier.value = 'Budi Santoso (Google)';
     userEmailNotifier.value = 'budisantoso@gmail.com';
     userAvatarNotifier.value = null;
     return true;

@@ -53,7 +53,9 @@ class ResultScreen extends StatelessWidget {
               label: 'View Recommendations',
               icon: Icons.spa_outlined,
               onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const RecommendationScreen()),
+                MaterialPageRoute(
+                  builder: (_) => RecommendationScreen(analysisResult: result),
+                ),
               ),
             ),
           ],

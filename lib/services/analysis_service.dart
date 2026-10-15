@@ -14,6 +14,10 @@ class AnalysisService {
   /// Digunakan sebagai fallback jika Supabase tidak tersedia.
   static final List<AnalysisResult> _localHistory = List.from(DummyData.history);
 
+  /// Hasil analisis paling mutakhir dari pengguna saat ini
+  static AnalysisResult get latestResult =>
+      _localHistory.isNotEmpty ? _localHistory.first : DummyData.latest;
+
   // ── Simpan ─────────────────────────────────────────────────────────────────
 
   /// Menyimpan [result] ke Supabase.

@@ -103,6 +103,15 @@ class _ProcessingScreenState extends State<ProcessingScreen>
     );
   }
 
+  void _retryAnalysis() {
+    setState(() {
+      _hasError = false;
+      _errorMessage = '';
+      _statusText = 'Menghubungkan ke server...';
+    });
+    _runAnalysis();
+  }
+
   void _retryWithDummy() {
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
@@ -290,22 +299,31 @@ class _ProcessingScreenState extends State<ProcessingScreen>
                     Row(
                       children: [
                         Expanded(
-                          child: OutlinedButton(
-                            onPressed: () => Navigator.of(context).pop(),
-                            child: const Text('Kembali'),
+                          child: OutlinedButton.icon(
+                            onPressed: _retryAnalysis,
+                            icon: const Icon(Icons.refresh_rounded, size: 18),
+                            label: const Text('Coba Lagi'),
                           ),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
-                          child: FilledButton(
+                          child: FilledButton.icon(
                             onPressed: _retryWithDummy,
+                            icon: const Icon(Icons.auto_awesome, size: 18),
                             style: FilledButton.styleFrom(
                               backgroundColor: AppColors.purple,
                             ),
-                            child: const Text('Demo Mode'),
+                            label: const Text('Mode Demo'),
                           ),
                         ),
                       ],
+                    ),
+                    const SizedBox(height: 8),
+                    Center(
+                      child: TextButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: const Text('Kembali ke Kamera / Galeri'),
+                      ),
                     ),
                   ] else ...[
                     SizedBox(
